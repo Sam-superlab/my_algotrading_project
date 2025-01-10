@@ -2,6 +2,8 @@ from src.backtest import Backtester
 from src.models import TradingModel
 from src.feature_engineering import FeatureEngineer
 from src.data_loader import DataLoader
+from src.strategies.hamiltonian_strategy import HamiltonianStrategy
+from src.strategies.strategy_factory import StrategyFactory
 from flask import Flask, render_template, request, jsonify
 import pandas as pd
 import sys
@@ -12,20 +14,8 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(PROJECT_ROOT)
 
-# Configure data directories
-DATA_DIR = os.path.join(PROJECT_ROOT, 'data')
-RAW_DATA_DIR = os.path.join(DATA_DIR, 'raw')
-
-# Create directories if they don't exist
-os.makedirs(RAW_DATA_DIR, exist_ok=True)
-
 
 app = Flask(__name__)
-
-# Initialize components
-data_loader = DataLoader()
-feature_engineer = FeatureEngineer()
-trading_model = TradingModel()
 
 
 @app.route('/')
@@ -34,47 +24,81 @@ def index():
     return render_template('index.html')
 
 
-@app.route('/upload', methods=['POST'])
-def upload_data():
-    """Handle data file upload"""
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file uploaded'}), 400
-
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-
-    # Save uploaded file with full path
-    file_path = os.path.join(RAW_DATA_DIR, file.filename)
-    file.save(file_path)
-
-    return jsonify({'message': 'File uploaded successfully'})
-
-
-@app.route('/backtest', methods=['POST'])
-def run_backtest():
-    """Run backtest with current configuration"""
+@app.route('/fetch_data', methods=['POST'])
+def fetch_data():
+    """Fetch stock data from Yahoo Finance"""
     try:
-        # Load and process data
-        df = data_loader.load_market_data(request.form['filename'])
-        if df is None:
-            return jsonify({'error': 'Failed to load data'}), 400
+        data = request.json
+        symbol = data['symbol']
+        start_date = data['start_date']
+        end_date = data['end_date']
 
-        # Generate features
-        df = feature_engineer.calculate_technical_indicators(df)
+        strategy = HamiltonianStrategy(
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date
+        )
 
-        # Train model and get predictions
-        X, y = trading_model.prepare_data(df)
-        trading_model.train(X, y)
-        predictions = trading_model.predict(X)
+        df = strategy.fetch_data()
+        return jsonify({'message': 'Data fetched successfully'})
 
-        # Run backtest
-        backtester = Backtester(data_loader.config)
-        results = backtester.run(df, predictions)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/run_strategy', methods=['POST'])
+def run_strategy():
+    """Run the selected trading strategy"""
+    try:
+        params = request.json
+        print(f"Received parameters: {params}")
+
+        strategy = StrategyFactory.create_strategy(
+            strategy_type=params['strategy_type'],
+            params=params
+        )
+
+        print("Fetching data...")
+        df = strategy.fetch_data()
+
+        # Get original stock data for comparison
+        stock_data = {
+            'dates': df.index.strftime('%Y-%m-%d').tolist(),
+            'prices': df['Close'].values.tolist(),
+            'volume': df['Volume'].values.tolist()
+        }
+
+        print("Running backtest...")
+        portfolio = strategy.backtest(
+            initial_capital=params['initial_capital'])
+
+        metrics = strategy.calculate_metrics()
+        print(f"Metrics calculated: {metrics}")
+
+        results = {
+            'equity_curve': portfolio['Portfolio_Value'].values.tolist(),
+            'dates': portfolio.index.strftime('%Y-%m-%d').tolist(),
+            'prices': strategy.data['Close'].values.tolist(),
+            'buy_dates': portfolio[portfolio['Position'] == 1].index.strftime('%Y-%m-%d').tolist(),
+            'buy_prices': strategy.data.loc[portfolio[portfolio['Position'] == 1].index, 'Close'].values.tolist(),
+            'sell_dates': portfolio[portfolio['Position'] == -1].index.strftime('%Y-%m-%d').tolist(),
+            'sell_prices': strategy.data.loc[portfolio[portfolio['Position'] == -1].index, 'Close'].values.tolist(),
+            'stock_data': stock_data,  # Add original stock data
+            'metrics': {
+                'Total Return': float(metrics['Total Return']),
+                'Annual Return': float(metrics['Annual Return']),
+                'Volatility': float(metrics['Volatility']),
+                'Sharpe Ratio': float(metrics['Sharpe Ratio']),
+                'Max Drawdown': float(metrics['Max Drawdown'])
+            }
+        }
 
         return jsonify(results)
 
     except Exception as e:
+        print(f"Error in run_strategy: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 

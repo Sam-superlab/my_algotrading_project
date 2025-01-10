@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trading System Dashboard</title>
+    <title>Trading Strategy Backtester</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 </head>
@@ -12,70 +12,111 @@
 <body>
     <div class="container">
         <header>
-            <h1>Trading System Dashboard</h1>
+            <h1>Trading Strategy Backtester</h1>
         </header>
 
         <div class="main-content">
-            <!-- Data Upload Section -->
-            <section class="upload-section">
-                <h2>Data Upload</h2>
-                <div class="upload-description">
-                    <p>Please upload a CSV file with the following format:</p>
-                    <ul>
-                        <li><strong>Required columns:</strong> date, open, high, low, close, volume</li>
-                        <li><strong>Date format:</strong> YYYY-MM-DD</li>
-                        <li><strong>Example:</strong></li>
-                    </ul>
-                    <pre class="csv-example">
-date,open,high,low,close,volume
-2024-01-01,100.0,101.5,99.0,100.5,1000000
-2024-01-02,100.5,102.0,100.0,101.8,1500000</pre>
+            <!-- Strategy Selection Section -->
+            <section class="strategy-selection">
+                <h2>Strategy Selection</h2>
+                <div class="form-group">
+                    <label for="strategyType">Strategy:</label>
+                    <select id="strategyType">
+                        <option value="hamiltonian">Hamiltonian Strategy</option>
+                        <option value="momentum">Momentum Strategy</option>
+                        <option value="meanReversion">Mean Reversion</option>
+                    </select>
                 </div>
-                <form id="uploadForm" class="upload-form">
-                    <input type="file" id="dataFile" accept=".csv">
-                    <button type="submit">Upload</button>
-                </form>
             </section>
 
-            <!-- Configuration Section -->
-            <section class="config-section">
-                <h2>Configuration</h2>
-                <form id="configForm">
+            <!-- Stock Selection Section -->
+            <section class="stock-selection">
+                <h2>Stock Selection</h2>
+                <div class="form-group">
+                    <label for="stockSymbol">Stock Symbol:</label>
+                    <input type="text" id="stockSymbol" placeholder="e.g., MSFT, AAPL">
+                </div>
+                <div class="date-range">
                     <div class="form-group">
-                        <label for="initialCapital">Initial Capital:</label>
-                        <input type="number" id="initialCapital" value="100000">
+                        <label for="startDate">Start Date:</label>
+                        <input type="date" id="startDate">
                     </div>
                     <div class="form-group">
-                        <label for="stopLoss">Stop Loss (%):</label>
-                        <input type="number" id="stopLoss" value="2" step="0.1">
+                        <label for="endDate">End Date:</label>
+                        <input type="date" id="endDate">
                     </div>
-                    <div class="form-group">
-                        <label for="takeProfit">Take Profit (%):</label>
-                        <input type="number" id="takeProfit" value="5" step="0.1">
+                </div>
+            </section>
+
+            <!-- Strategy Parameters Section -->
+            <section class="strategy-params">
+                <h2>Strategy Parameters</h2>
+                <form id="strategyForm">
+                    <div id="hamiltonianParams">
+                        <div class="form-group">
+                            <label for="initialCapital">Initial Capital:</label>
+                            <input type="number" id="initialCapital" value="100000">
+                        </div>
+                        <div class="form-group">
+                            <label for="damping">Damping:</label>
+                            <input type="number" id="damping" value="0.15" step="0.01">
+                        </div>
+                        <div class="form-group">
+                            <label for="externalInfluence">External Influence:</label>
+                            <input type="number" id="externalInfluence" value="0.4" step="0.1">
+                        </div>
+                        <div class="form-group">
+                            <label for="friction">Friction:</label>
+                            <input type="number" id="friction" value="0.03" step="0.01">
+                        </div>
                     </div>
+                    <div id="momentumParams" style="display: none;">
+                        <div class="form-group">
+                            <label for="lookbackPeriod">Lookback Period:</label>
+                            <input type="number" id="lookbackPeriod" value="20">
+                        </div>
+                        <div class="form-group">
+                            <label for="momentumThreshold">Threshold:</label>
+                            <input type="number" id="momentumThreshold" value="0" step="0.01">
+                        </div>
+                    </div>
+                    <div id="meanReversionParams" style="display: none;">
+                        <div class="form-group">
+                            <label for="window">Window:</label>
+                            <input type="number" id="window" value="20">
+                        </div>
+                        <div class="form-group">
+                            <label for="stdDev">Standard Deviation:</label>
+                            <input type="number" id="stdDev" value="2.0" step="0.1">
+                        </div>
+                    </div>
+                    <button type="submit">Run Backtest</button>
                 </form>
             </section>
 
             <!-- Results Section -->
             <section class="results-section">
                 <h2>Backtest Results</h2>
-                <div id="equityCurve"></div>
+                <div class="charts-container">
+                    <div id="equityCurve"></div>
+                    <div id="priceChart"></div>
+                </div>
                 <div class="stats-grid">
                     <div class="stat-box">
                         <h3>Total Return</h3>
                         <p id="totalReturn">-</p>
                     </div>
                     <div class="stat-box">
-                        <h3>Win Rate</h3>
-                        <p id="winRate">-</p>
+                        <h3>Annual Return</h3>
+                        <p id="annualReturn">-</p>
+                    </div>
+                    <div class="stat-box">
+                        <h3>Sharpe Ratio</h3>
+                        <p id="sharpeRatio">-</p>
                     </div>
                     <div class="stat-box">
                         <h3>Max Drawdown</h3>
                         <p id="maxDrawdown">-</p>
-                    </div>
-                    <div class="stat-box">
-                        <h3>Total Trades</h3>
-                        <p id="totalTrades">-</p>
                     </div>
                 </div>
             </section>
